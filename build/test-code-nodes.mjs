@@ -103,12 +103,91 @@ test('filter-new-jobs anti-joins the sheet and honours the cap', () => {
     { 'Job URL': 'https://linkedin.com/jobs/view/1?trk=foo', 'Job ID': '1' },
     { 'Job URL': '', 'Job ID': '2' },
   ];
-  const out = run('filter-new-jobs.js', logged, { Config: [CONFIG], 'Normalize Jobs': scraped });
+  const out = run('filter-new-jobs.js', logged, { Config: [CONFIG], 'Match Search Terms': scraped });
   assert.deepEqual(out.map((i) => i.json.jobId), ['3', '4', '5'], 'dedupes then caps at 3');
 });
 
 test('filter-new-jobs works on a first run with an empty sheet', () => {
-  const out = run('filter-new-jobs.js', [], { Config: [{ maxJobsPerRun: 10 }], 'Normalize Jobs': [{ jobId: 'a', url: 'u' }] });
+  const out = run('filter-new-jobs.js', [], { Config: [{ maxJobsPerRun: 10 }], 'Match Search Terms': [{ jobId: 'a', url: 'u' }] });
+  assert.equal(out.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+test('normalize-jobs reads the free company-board and aggregator shapes', () => {
+  const items = [
+    // Greenhouse: entity-encoded html, nested location, company only in the URL
+    { jobs: [{ id: 501, title: 'Backend Engineer', location: { name: 'Dublin' }, absolute_url: 'https://boards.greenhouse.io/acme-labs/jobs/501', content: '&lt;p&gt;Build &lt;strong&gt;systems&lt;/strong&gt;.&lt;/p&gt;', updated_at: '2026-09-01' }] },
+    // Lever: `text` for title, `categories.location`, company only in the URL
+    [{ id: 'abc', text: 'Platform Engineer', hostedUrl: 'https://jobs.lever.co/globex/abc', categories: { location: 'Remote', commitment: 'Full-time' }, descriptionPlain: 'Own the platform.', createdAt: 1756684800000 }],
+    // Arbeitnow: `data` envelope, company_name, boolean remote flag
+    { data: [{ slug: 'x1', title: 'Data Engineer', company_name: 'Initech', location: 'Berlin', url: 'https://arbeitnow.com/view/x1', description: 'ETL work.', remote: true }] },
+    // RemoteOK: legal notice as the first element, `position` for title
+    [{ legal: 'Data from remoteok.com' }, { id: '9', position: 'Site Reliability Engineer', company: 'Hooli', url: 'https://remoteok.com/l/9', description: 'Keep it up.', location: 'Worldwide' }],
+  ];
+  const out = run('normalize-jobs.js', items, {});
+  const byTitle = Object.fromEntries(out.map((i) => [i.json.title, i.json]));
+
+  assert.equal(Object.keys(byTitle).length, 4, 'legal notice dropped, all four jobs kept');
+  assert.equal(byTitle['Backend Engineer'].company, 'Acme Labs', 'greenhouse company derived from the board slug');
+  assert.equal(byTitle['Backend Engineer'].location, 'Dublin', 'nested location object flattened');
+  assert.equal(byTitle['Backend Engineer'].description, 'Build systems.', 'entities decoded before tags stripped');
+  assert.equal(byTitle['Platform Engineer'].company, 'Globex', 'lever company derived from the hosted URL');
+  assert.equal(byTitle['Platform Engineer'].location, 'Remote', 'dot-path into categories');
+  assert.equal(byTitle['Platform Engineer'].employmentType, 'Full-time');
+  assert.equal(byTitle['Data Engineer'].company, 'Initech');
+  assert.equal(byTitle['Data Engineer'].workplaceType, 'Remote', 'boolean remote flag mapped to text');
+  assert.equal(byTitle['Site Reliability Engineer'].company, 'Hooli');
+});
+
+// ---------------------------------------------------------------------------
+test('build-free-requests builds keyless URLs for every configured board', () => {
+  const out = run('build-free-requests.js', [{}], {
+    Config: [{ useAggregators: true, greenhouseCompanies: ['stripe'], leverCompanies: ['netflix'], ashbyCompanies: [] }],
+  });
+  const urls = out.map((i) => i.json.url);
+  assert.equal(urls.length, 4, 'two aggregators plus two company boards');
+  assert.ok(urls.includes('https://www.arbeitnow.com/api/job-board-api'));
+  assert.ok(urls.includes('https://remoteok.com/api'));
+  assert.ok(urls.includes('https://boards-api.greenhouse.io/v1/boards/stripe/jobs?content=true'));
+  assert.ok(urls.includes('https://api.lever.co/v0/postings/netflix?mode=json'));
+  assert.ok(urls.every((u) => !u.includes('token') && !u.includes('key')), 'no credentials in any URL');
+});
+
+test('build-free-requests can run on company boards alone', () => {
+  const out = run('build-free-requests.js', [{}], { Config: [{ useAggregators: false, greenhouseCompanies: ['figma'] }] });
+  assert.equal(out.length, 1);
+  assert.equal(out[0].json.sourceName, 'greenhouse:figma');
+});
+
+test('build-free-requests refuses to run with no source at all', () => {
+  assert.throws(
+    () => run('build-free-requests.js', [{}], { Config: [{ useAggregators: false }] }),
+    /No free job sources configured/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+test('match-search-terms keeps includes, drops excludes, and excludes win', () => {
+  const jobs = [
+    { title: 'Senior Backend Engineer' },
+    { title: 'Backend Engineering Intern' },   // include hit, but excluded
+    { title: 'Enterprise Sales Executive' },   // neither
+    { title: 'Platform Engineer' },
+    { title: 'Head of Data Engineering' },     // include hit, excluded by "head of"
+  ];
+  const out = run('match-search-terms.js', jobs, {
+    Config: [{ titleKeywords: ['backend', 'platform', 'data engineer'], excludeKeywords: ['intern', 'head of'] }],
+  });
+  assert.deepEqual(out.map((i) => i.json.title), ['Senior Backend Engineer', 'Platform Engineer']);
+});
+
+test('match-search-terms keeps everything when no keywords are set', () => {
+  const out = run('match-search-terms.js', [{ title: 'Anything' }, { title: 'At All' }], { Config: [{}] });
+  assert.equal(out.length, 2);
+});
+
+test('match-search-terms is case-insensitive', () => {
+  const out = run('match-search-terms.js', [{ title: 'BACKEND ENGINEER' }], { Config: [{ titleKeywords: ['Backend'] }] });
   assert.equal(out.length, 1);
 });
 

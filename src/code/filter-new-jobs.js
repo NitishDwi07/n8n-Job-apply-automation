@@ -16,7 +16,7 @@ for (const row of $input.all()) {
 }
 
 const fresh = [];
-for (const item of $('Normalize Jobs').all()) {
+for (const item of $('Match Search Terms').all()) {
   if (fresh.length >= maxJobs) break;
 
   const job = item.json;

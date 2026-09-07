@@ -10,12 +10,22 @@ Manual trigger ───────────┴─► Config ─► Fetch Ma
                                        Expand Searches            one item per saved search
                                               │
                                               ▼
-                                    Scrape LinkedIn Jobs          Apify run-sync-get-dataset-items
-                                              │
-                                              ▼
-                                       Normalize Jobs             any actor shape -> one job shape
-                                              │
-                                              ▼
+                                      Route Job Source            on Config.jobSource
+                                        │            │
+                                 'free' │            │ 'apify'
+                                        ▼            ▼
+                            Build Free Requests   Scrape LinkedIn Jobs
+                                        │            │
+                             Fetch Free Job Boards   │
+                                        │            │
+                                        └──────┬─────┘
+                                               ▼
+                                       Normalize Jobs             any source shape -> one job shape
+                                               │
+                                               ▼
+                                     Match Search Terms           keyword gate, before any model call
+                                               │
+                                               ▼
                                        Get Logged Jobs            read the Applications tab
                                               │
                                               ▼
@@ -25,7 +35,10 @@ Manual trigger ───────────┴─► Config ─► Fetch Ma
                             ┌──────────► Loop Over Jobs ──────────► (done) Build Run Summary ─► Email
                             │                 │ (per job, batch size 1)
                             │                 ▼
-                            │          Score Job Relevance        GPT-4o, temp 0.1, structured output
+                            │             Throttle                free-tier rate limiting
+                            │                 │
+                            │                 ▼
+                            │          Score Job Relevance        Gemini Flash, temp 0.1, structured
                             │                 │
                             │                 ▼
                             │            Merge Score              re-attach the job to the score
@@ -37,7 +50,7 @@ Manual trigger ───────────┴─► Config ─► Fetch Ma
                             │              ▼        ▼
                             │   Write Tailored    Build Skipped Row
                             │   Resume            │
-                            │   (GPT-4o, 0.4)     ▼
+                            │   (Gemini, 0.4)     ▼
                             │        │          Log Skipped ──────┐
                             │        ▼                            │
                             │   Clean Resume HTML                 │
@@ -60,9 +73,9 @@ Manual trigger ───────────┴─► Config ─► Fetch Ma
 | Part | Nodes | What it does |
 | --- | --- | --- |
 | 1 | `Config`, `Fetch Master Resume` | Single source of settings; exports your Docs resume as plain text so you edit it in Docs, not in n8n |
-| 2 | `Expand Searches`, `Scrape LinkedIn Jobs` | One Apify actor run per saved search |
-| 3 | `Normalize Jobs`, `Get Logged Jobs`, `Filter New Jobs`, `Loop Over Jobs` | Normalise, de-duplicate, cap, then iterate one job at a time |
-| 4 | `Score Job Relevance`, `Scoring Model`, `Relevance Schema`, `Merge Score` | GPT-4o returns a structured score, not prose |
+| 2 | `Route Job Source`, `Build Free Requests`, `Fetch Free Job Boards`, `Scrape LinkedIn Jobs` | Keyless public boards by default; LinkedIn via Apify if you opt in |
+| 3 | `Normalize Jobs`, `Match Search Terms`, `Get Logged Jobs`, `Filter New Jobs`, `Loop Over Jobs` | Normalise, keyword-filter, de-duplicate, cap, then iterate one job at a time |
+| 4 | `Throttle`, `Score Job Relevance`, `Scoring Model`, `Relevance Schema`, `Merge Score` | Gemini Flash returns a structured score, not prose |
 | 5 | `Worth Applying?` | Gate on score and deal-breakers |
 | 6 | `Write Tailored Resume`, `Resume Model`, `Clean Resume HTML` | A brand-new resume per job, as HTML |
 | 7 | `Build Drive Upload`, `Create Google Doc` | HTML converted into a native Google Doc |
@@ -84,9 +97,29 @@ empty sheet.
 **Skipped jobs are logged too.** Not just for the audit trail — without it the
 same rejects get re-scored (and re-paid-for) every single morning.
 
-**`maxJobsPerRun` is a spend cap, not a preference.** A broad LinkedIn search
-returns hundreds of postings. Without the cap, one run could push a few hundred
-job descriptions through GPT-4o twice.
+**`maxJobsPerRun` is a quota cap, not a preference.** A broad search returns
+hundreds of postings, and the workflow makes two model calls per job. Without
+the cap, one run could push a few hundred job descriptions through the model
+twice and exhaust a free-tier daily allowance in a single morning.
+
+**Two filters, deliberately ordered cheapest-first.** `Match Search Terms` is a
+string comparison and runs before anything reaches a model; `Worth Applying?`
+costs a model call per job. The aggregator sources return every job they hold,
+so without the keyword gate in front you would pay — in quota or in dollars —
+to have a model read postings you could have rejected on the title alone.
+
+**The free sources are third-party endpoints, and that is a real dependency.**
+Arbeitnow, RemoteOK, and the ATS board APIs are public and keyless, which also
+means nobody promises they will keep working. Both fetch nodes continue on
+error so one dead source degrades the run instead of failing it, but if a
+source disappears you edit `src/code/build-free-requests.js`. The
+Greenhouse / Lever / Ashby boards are the most durable of the set — they are
+how those companies publish their own jobs — and the least noisy.
+
+**Free-tier models need pacing, not just capping.** The `Throttle` node exists
+because free tiers limit requests per minute, which a batch loop would breach
+immediately. It is a config value rather than a constant so raising your quota
+is a one-field change.
 
 **Structured output on the screener, free text on the writer.** The screener's
 result is branched on, so it goes through an output parser and comes back as a

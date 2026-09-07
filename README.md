@@ -8,21 +8,27 @@ Built from **["I Built an AI System That Automates My Job Applications"](https:/
 by Michele Torti, following the same eight-part structure.
 
 ```
-LinkedIn (via Apify)  ─►  GPT-4o relevance score  ─►  GPT-4o resume writer
-                                   │                          │
-                              below threshold            HTML ─► Google Doc
-                                   │                          │
-                             Skipped tab              Applications tab
+Public job boards  ─►  keyword gate  ─►  AI relevance score  ─►  AI resume writer
+(no API key)                                     │                       │
+                                            below threshold        HTML ─► Google Doc
+                                                 │                       │
+                                           Skipped tab            Applications tab
 ```
+
+**Runs on free tiers end to end** — no card, no Apify token, no OpenAI key.
+See [Cost](#cost).
 
 ## What it does
 
-1. **Scrapes LinkedIn** for every saved search you define, via an Apify actor.
-2. **Normalises** whatever shape the actor returned into one consistent job object.
-3. **De-duplicates** against your spreadsheet so a posting is never scored twice,
-   and caps the batch so a broad search cannot run away with your API spend.
-4. **Scores each job 0–100** with GPT-4o against your real resume and your real
-   deal-breakers, returning a structured verdict rather than prose.
+1. **Finds jobs** from keyless public sources — the Arbeitnow and RemoteOK
+   aggregators, plus any company's public Greenhouse / Lever / Ashby board.
+   Flip one config field to use LinkedIn via Apify instead.
+2. **Normalises** whatever shape the source returned into one consistent job
+   object — ~40 field names across five different formats.
+3. **Filters on keywords, then de-duplicates** against your spreadsheet, so a
+   posting is never scored twice and irrelevant titles never reach a model at all.
+4. **Scores each job 0–100** with Gemini Flash against your real resume and your
+   real deal-breakers, returning a structured verdict rather than prose.
 5. **Filters** — only jobs clearing your threshold with no deal-breaker hit get
    a resume. Everything else is logged with the reason it was rejected.
 6. **Writes a new resume per job** in HTML, from your master resume only, with a
@@ -42,8 +48,10 @@ point where applying is a two-minute review-and-send instead of an hour of
 rewriting. Read the `Gaps` column before you send anything, and read the resume
 — it is generated text with your name on it.
 
-Also worth knowing: automated scraping of LinkedIn is against LinkedIn's terms
-of service, which is a decision you are making when you run this.
+Also worth knowing: the default free sources are public, documented APIs, so
+there is nothing untoward about using them. The **optional** Apify path scrapes
+LinkedIn, which is against LinkedIn's terms of service — that one is a decision
+you are making when you switch `jobSource` to `apify`.
 
 ## Quick start
 
@@ -63,14 +71,26 @@ the test run — is in **[docs/SETUP.md](docs/SETUP.md)**.
 
 You will need:
 
+<a id="cost"></a>
+
 | Service | Why | Cost |
 | --- | --- | --- |
-| n8n | Runs the workflow | Free self-hosted |
-| Apify | LinkedIn job scraping | Free $5/month credit covers this volume |
-| OpenAI | Scoring + resume writing | ~$17/month at 550 jobs, ~$7 with a cheaper screener |
-| Google (Drive, Docs, Sheets) | Master resume, generated docs, database | Free |
+| n8n | Runs the workflow | Free, self-hosted |
+| Google Gemini | Scoring + resume writing | Free tier (`gemini-2.0-flash`) |
+| Job sources | Arbeitnow, RemoteOK, Greenhouse/Lever/Ashby | Free, no API key |
+| Google Drive/Docs/Sheets | Master resume, generated docs, database | Free |
+| *Apify (optional)* | *LinkedIn coverage* | *Free $5/mo credit; check actor pricing* |
 
-Cost breakdown and the five levers that reduce it: **[docs/COSTS.md](docs/COSTS.md)**.
+Two things to know about running free:
+
+- Gemini's free tier is **rate-limited**, so `throttleSeconds` (default 10s)
+  paces the loop. 25 jobs takes about five minutes.
+- Free-tier usage **may be used to improve Google's models**, and this workflow
+  sends your full resume on every call. If that's not acceptable, swapping the
+  two model nodes for OpenAI costs roughly $6–17/month —
+  [the trade and the numbers](docs/COSTS.md#the-privacy-trade).
+
+Full breakdown: **[docs/COSTS.md](docs/COSTS.md)**.
 
 ## Configuration
 
@@ -85,12 +105,23 @@ searchQueries = [
 ]
 ```
 
-Every key on a search is forwarded to the Apify actor untouched, so switching
-to a different scraper is a config change rather than a rewrite.
+On the free path, the highest-signal source is companies' own ATS boards —
+first-hand postings, public JSON, no key:
 
-The highest-leverage field by a wide margin is `dealBreakers`. Be specific and
-honest — it is what stops the workflow spending money writing resumes for jobs
-you would never accept.
+```js
+greenhouseCompanies = ['stripe', 'figma']   // boards.greenhouse.io/stripe
+leverCompanies      = ['netflix']           // jobs.lever.co/netflix
+titleKeywords       = ['backend', 'platform', 'data engineer']
+excludeKeywords     = ['intern', 'sales', 'director']
+```
+
+Twenty companies you actually want beats a thousand aggregator postings. Slug
+lookup table is in [docs/SETUP.md](docs/SETUP.md#finding-company-board-slugs).
+
+Two fields carry most of the leverage. `dealBreakers` is what stops the workflow
+writing resumes for jobs you would never accept. `titleKeywords` /
+`excludeKeywords` run *before* any model call, so everything they drop is free —
+tune these before anything else.
 
 ## Repository layout
 
@@ -112,10 +143,11 @@ npm run build   # regenerate workflows/job-application-automation.json
 npm test        # build + 17 Code node tests + structural validation
 ```
 
-`npm test` runs each Code node outside n8n against fixtures — including three
-different Apify actor output shapes, an empty first-run sheet, a malformed model
-response, and the `multipart/related` body that makes Drive produce a Doc rather
-than an HTML attachment. The validator then checks the built workflow for
+`npm test` runs each Code node outside n8n against fixtures — 24 tests covering
+seven different job-source output shapes (LinkedIn actors, Arbeitnow, RemoteOK,
+Greenhouse, Lever), an empty first-run sheet, a malformed model response, and
+the `multipart/related` body that makes Drive produce a Doc rather than an HTML
+attachment. The validator then checks the built workflow for
 dangling connections, unreachable nodes, unattached AI sub-nodes, and
 `$('Node')` expressions pointing at nodes that do not exist.
 
@@ -128,8 +160,10 @@ The `Skipped` tab is the feedback loop. After a few runs:
 
 - Good jobs being skipped → lower `relevanceThreshold` or soften `dealBreakers`
 - Junk clearing the bar → raise the threshold or sharpen `mustHaves`
-- Same irrelevant companies every run → tighten `searchQueries`
+- Aggregator noise swamping the run → set `useAggregators: false` and grow the
+  company board lists instead
 - Resumes reading generically → edit `src/prompts/resume-system.md`, rebuild
+- Gemini rate-limit errors → raise `throttleSeconds` or lower `maxJobsPerRun`
 
 ## Credits
 
