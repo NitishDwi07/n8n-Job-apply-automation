@@ -27,6 +27,9 @@ Manual trigger ───────────┴─► Config ─► Fetch Ma
                                                │
                                                ▼
                                        Get Logged Jobs            read the Applications tab
+                                               │
+                                               ▼
+                                       Get Skipped Jobs           read the Skipped tab too
                                               │
                                               ▼
                                        Filter New Jobs            anti-join + cap at maxJobsPerRun
@@ -88,11 +91,15 @@ single bad posting fails one iteration instead of the run, and every downstream
 `$('Node').first()` unambiguously refers to the current job.
 
 **The dedupe set is the sheet, not workflow state.** `Filter New Jobs` reads
-`Job URL` and `Job ID` back out of the `Applications` tab. Consequences: the
-workflow is safe to re-run at any time, deleting a sheet row makes the workflow
-reconsider that job, and there is no hidden state to get out of sync. `Get
-Logged Jobs` is set to continue on error so the very first run works against an
-empty sheet.
+`Job URL` and `Job ID` back out of **both** tabs — `Applications` and
+`Skipped`. Both matter: a job you applied to and a job you already rejected are
+equally jobs you must not pay to score again, and reading only `Applications`
+means every reject is re-scored on every run. (That was a real bug here, caught
+by the re-run check in `npm run e2e` and not by any unit test — the unit tests
+only saw the node that was wired.) Consequences: the workflow is safe to re-run
+at any time, deleting a sheet row makes it reconsider that job, and there is no
+hidden state to get out of sync. Both read nodes continue on error so the very
+first run works against empty tabs.
 
 **Skipped jobs are logged too.** Not just for the audit trail — without it the
 same rejects get re-scored (and re-paid-for) every single morning.
@@ -150,6 +157,8 @@ workflows/job-application-automation.json   the importable workflow (generated, 
 build/build.mjs                             assembles that JSON from src/
 build/validate.mjs                          structural checks on the built workflow
 build/test-code-nodes.mjs                   runs each Code node against fixtures
+build/run-e2e.mjs                           end-to-end run outside n8n (see below)
+build/fixtures/                             vendor-shaped job board payloads
 src/code/*.js                               Code node sources
 src/prompts/*.md                            the two AI prompts, system + user
 src/schemas/relevance.example.json          the screener's output shape
@@ -162,4 +171,36 @@ Editing the JSON by hand works too, but the next build overwrites it.
 
 ```bash
 npm test    # build + code-node tests + structural validation
+npm run e2e # drive the whole pipeline end to end, no n8n needed
 ```
+
+## The end-to-end runner
+
+`npm run e2e` executes the committed workflow outside n8n. Every Code node,
+prompt, expression and node parameter is read from
+`workflows/job-application-automation.json` — nothing is reimplemented — and
+only the outbound calls are substituted:
+
+| Node | Substituted with |
+| --- | --- |
+| `Fetch Master Resume` | `build/fixtures/master-resume.txt` |
+| `Fetch Free Job Boards` | `build/fixtures/*.json`, in each vendor's real response shape. A source with no fixture returns an error item, exercising the continue-on-error path. |
+| `Create Google Doc` | The `multipart/related` body is **parsed** the way Drive parses it — boundary, two parts, metadata mimeType, `text/html` content type — and the extracted HTML is written to `build/e2e-output/`. A malformed body fails here. |
+| Sheets nodes | In-memory tabs, dumped to `build/e2e-output/applications.json` |
+| Chat models | Real Gemini when `GEMINI_API_KEY` is set, otherwise a deterministic local stub that scores on resume/posting vocabulary overlap and applies the prompt's own hard caps |
+
+Two switches make it useful beyond a smoke test:
+
+```bash
+# point at the fixture board slugs, or tighten a threshold
+E2E_CONFIG='{"greenhouseCompanies":["acme-labs"],"leverCompanies":["globex"]}' npm run e2e
+
+# replay a previous run's sheet: the re-run must find 0 new jobs
+E2E_SEED_SHEET=build/e2e-output/applications.json npm run e2e
+
+# drive the real model
+GEMINI_API_KEY=... NODE_USE_ENV_PROXY=1 npm run e2e
+```
+
+The seeded re-run is the check worth keeping: it is the only one that proves a
+second run costs nothing, and it is what caught the `Skipped`-tab dedupe bug.

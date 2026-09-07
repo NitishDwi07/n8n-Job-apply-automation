@@ -1,0 +1,18 @@
+[
+  {
+    "id": "b7c1e2f4-1111-4aaa-9bbb-0123456789ab",
+    "text": "Platform Engineer (Remote, EU)",
+    "hostedUrl": "https://jobs.lever.co/globex/b7c1e2f4-1111-4aaa-9bbb-0123456789ab",
+    "createdAt": 1756684800000,
+    "categories": { "location": "Remote - EU", "team": "Platform", "commitment": "Full-time" },
+    "descriptionPlain": "We need a Platform Engineer to run our Kubernetes estate and CI. Day to day you will write Go and Python, manage Terraform modules, and improve GitHub Actions pipelines. Requirements: 4+ years infrastructure work, Terraform, AWS, and strong Kubernetes operations experience. Fully remote within the EU. Base salary 95,000 - 120,000 EUR."
+  },
+  {
+    "id": "c8d2f3a5-2222-4bbb-8ccc-9876543210fe",
+    "text": "Enterprise Sales Director, DACH",
+    "hostedUrl": "https://jobs.lever.co/globex/c8d2f3a5-2222-4bbb-8ccc-9876543210fe",
+    "createdAt": 1756598400000,
+    "categories": { "location": "Munich", "team": "Sales", "commitment": "Full-time" },
+    "descriptionPlain": "Own the DACH enterprise pipeline. Commission-only compensation for the first six months."
+  }
+]

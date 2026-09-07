@@ -1,0 +1,20 @@
+{
+  "jobs": [
+    {
+      "id": 4012001,
+      "title": "Senior Backend Engineer, Data Platform",
+      "updated_at": "2026-09-02T09:14:00-04:00",
+      "location": { "name": "Berlin, Germany" },
+      "absolute_url": "https://boards.greenhouse.io/acme-labs/jobs/4012001",
+      "content": "&lt;p&gt;We are hiring a &lt;strong&gt;Senior Backend Engineer&lt;/strong&gt; to own our batch data platform.&lt;/p&gt;&lt;p&gt;You will work in &lt;strong&gt;Python&lt;/strong&gt; and &lt;strong&gt;Go&lt;/strong&gt; on Airflow pipelines running on AWS, with dbt and Snowflake downstream. You will own the on-call rotation for the platform and set DAG-level SLAs.&lt;/p&gt;&lt;p&gt;Requirements: 5+ years backend engineering, strong Python, production Airflow experience, Terraform, and AWS. Remote within the EU.&lt;/p&gt;&lt;script&gt;tracking()&lt;/script&gt;"
+    },
+    {
+      "id": 4012002,
+      "title": "Engineering Manager, Infrastructure",
+      "updated_at": "2026-09-01T11:00:00-04:00",
+      "location": { "name": "Berlin, Germany" },
+      "absolute_url": "https://boards.greenhouse.io/acme-labs/jobs/4012002",
+      "content": "&lt;p&gt;Lead a team of 8 infrastructure engineers. This is a people-management role with no hands-on coding expected.&lt;/p&gt;"
+    }
+  ]
+}

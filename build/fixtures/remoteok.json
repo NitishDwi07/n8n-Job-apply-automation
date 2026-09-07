@@ -1,0 +1,25 @@
+[
+  { "legal": "Data provided by RemoteOK.com. Attribution required." },
+  {
+    "id": "778899",
+    "slug": "hooli-site-reliability-engineer",
+    "position": "Site Reliability Engineer",
+    "company": "Hooli",
+    "location": "Worldwide",
+    "url": "https://remoteok.com/remote-jobs/778899-site-reliability-engineer",
+    "date": "2026-09-03T08:00:00+00:00",
+    "salary_min": 110000,
+    "tags": ["python", "kubernetes", "aws", "terraform"],
+    "description": "<p>Keep a large multi-region platform up. You will own SLOs, incident response, and the Terraform that provisions it all. Strong Python required, Kubernetes at scale required, on-call participation required.</p>"
+  },
+  {
+    "id": "778900",
+    "slug": "acme-technical-recruiter",
+    "position": "Technical Recruiter",
+    "company": "Acme Analytics",
+    "location": "Remote",
+    "url": "https://remoteok.com/remote-jobs/778900-technical-recruiter",
+    "date": "2026-09-03T09:00:00+00:00",
+    "description": "<p>Hire engineers for a fast-growing analytics company.</p>"
+  }
+]

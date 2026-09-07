@@ -1,13 +1,16 @@
-// Anti-join the scrape against everything already in the sheet (both tabs feed
-// the same dedupe set), then cap the batch so one run cannot burn the whole
-// OpenAI budget on a 700-result scrape.
+// Anti-join the scrape against everything already in the sheet, then cap the
+// batch so one run cannot burn the whole model quota on a broad scrape.
+//
+// BOTH tabs feed the dedupe set. An application already sent and a job already
+// rejected are equally jobs we must not pay to score a second time - reading
+// only Applications means every reject gets re-scored every single run.
 const config = $('Config').first().json;
 const maxJobs = Number(config.maxJobsPerRun) || 25;
 
 const key = (value) => String(value ?? '').trim().toLowerCase().split('?')[0].replace(/\/$/, '');
 
 const seen = new Set();
-for (const row of $input.all()) {
+for (const row of [...$('Get Logged Jobs').all(), ...$('Get Skipped Jobs').all()]) {
   const record = row.json ?? {};
   for (const column of ['Job URL', 'Job ID']) {
     const value = key(record[column]);

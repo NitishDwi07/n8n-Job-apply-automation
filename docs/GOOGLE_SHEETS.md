@@ -9,8 +9,9 @@ Paste each row below into cell `A1` of its tab (tab-separated).
 ## Tab: `Applications`
 
 One row per job that cleared the relevance threshold and got a tailored resume.
-This tab is also the de-duplication source — `Filter New Jobs` reads `Job URL`
-and `Job ID` from it so a posting is never scored or paid for twice.
+This tab is one of the two de-duplication sources — `Filter New Jobs` reads
+`Job URL` and `Job ID` from **both** tabs so a posting is never scored or paid
+for twice.
 
 | Column | Contents |
 | --- | --- |
@@ -36,9 +37,10 @@ Date	Job ID	Title	Company	Location	Workplace	Salary	Score	Verdict	Match Reasons	
 
 ## Tab: `Skipped`
 
-One row per job that was scored and rejected. Keeping these is what stops the
-workflow re-scoring the same rejects every morning, and it is your only signal
-that the threshold or the search queries need tuning.
+One row per job that was scored and rejected. This tab is read back by
+`Get Skipped Jobs` and feeds the same dedupe set as `Applications`, which is
+what stops the workflow re-scoring the same rejects every morning. It is also
+your only signal that the threshold or the keywords need tuning.
 
 | Column | Contents |
 | --- | --- |

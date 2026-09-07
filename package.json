@@ -9,6 +9,7 @@
     "build": "node build/build.mjs",
     "validate": "node build/validate.mjs",
     "test:code": "node build/test-code-nodes.mjs",
+    "e2e": "node build/run-e2e.mjs",
     "test": "npm run build && npm run test:code && npm run validate"
   },
   "license": "MIT"

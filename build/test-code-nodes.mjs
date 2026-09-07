@@ -99,17 +99,35 @@ test('filter-new-jobs anti-joins the sheet and honours the cap', () => {
     { jobId: '5', url: 'https://linkedin.com/jobs/view/5' },
     { jobId: '6', url: 'https://linkedin.com/jobs/view/6' }, // beyond maxJobsPerRun
   ];
-  const logged = [
-    { 'Job URL': 'https://linkedin.com/jobs/view/1?trk=foo', 'Job ID': '1' },
-    { 'Job URL': '', 'Job ID': '2' },
-  ];
-  const out = run('filter-new-jobs.js', logged, { Config: [CONFIG], 'Match Search Terms': scraped });
+  const logged = [{ 'Job URL': 'https://linkedin.com/jobs/view/1?trk=foo', 'Job ID': '1' }];
+  const skipped = [{ 'Job URL': '', 'Job ID': '2' }];
+  const out = run('filter-new-jobs.js', [], {
+    Config: [CONFIG],
+    'Match Search Terms': scraped,
+    'Get Logged Jobs': logged,
+    'Get Skipped Jobs': skipped,
+  });
   assert.deepEqual(out.map((i) => i.json.jobId), ['3', '4', '5'], 'dedupes then caps at 3');
 });
 
-test('filter-new-jobs works on a first run with an empty sheet', () => {
-  const out = run('filter-new-jobs.js', [], { Config: [{ maxJobsPerRun: 10 }], 'Match Search Terms': [{ jobId: 'a', url: 'u' }] });
+test('filter-new-jobs works on a first run with both tabs empty', () => {
+  const out = run('filter-new-jobs.js', [], {
+    Config: [{ maxJobsPerRun: 10 }],
+    'Match Search Terms': [{ jobId: 'a', url: 'u' }],
+    'Get Logged Jobs': [],
+    'Get Skipped Jobs': [],
+  });
   assert.equal(out.length, 1);
+});
+
+test('filter-new-jobs will not re-score a job already on the Skipped tab', () => {
+  const out = run('filter-new-jobs.js', [], {
+    Config: [{ maxJobsPerRun: 10 }],
+    'Match Search Terms': [{ jobId: 'rejected', url: 'https://job/1' }, { jobId: 'brand-new', url: 'https://job/2' }],
+    'Get Logged Jobs': [],
+    'Get Skipped Jobs': [{ 'Job ID': 'rejected', 'Job URL': 'https://job/1' }],
+  });
+  assert.deepEqual(out.map((i) => i.json.jobId), ['brand-new'], 'a reject is never paid for twice');
 });
 
 // ---------------------------------------------------------------------------

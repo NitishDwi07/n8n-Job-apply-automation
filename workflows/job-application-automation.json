@@ -409,25 +409,50 @@
       "onError": "continueRegularOutput"
     },
     {
-      "id": "filter-new-jobs-13",
-      "name": "Filter New Jobs",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "get-skipped-jobs-13",
+      "name": "Get Skipped Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
       "position": [
         1540,
         300
       ],
       "parameters": {
-        "jsCode": "// Anti-join the scrape against everything already in the sheet (both tabs feed\n// the same dedupe set), then cap the batch so one run cannot burn the whole\n// OpenAI budget on a 700-result scrape.\nconst config = $('Config').first().json;\nconst maxJobs = Number(config.maxJobsPerRun) || 25;\n\nconst key = (value) => String(value ?? '').trim().toLowerCase().split('?')[0].replace(/\\/$/, '');\n\nconst seen = new Set();\nfor (const row of $input.all()) {\n  const record = row.json ?? {};\n  for (const column of ['Job URL', 'Job ID']) {\n    const value = key(record[column]);\n    if (value) seen.add(value);\n  }\n}\n\nconst fresh = [];\nfor (const item of $('Match Search Terms').all()) {\n  if (fresh.length >= maxJobs) break;\n\n  const job = item.json;\n  const urlKey = key(job.url);\n  const idKey = key(job.jobId);\n  if ((urlKey && seen.has(urlKey)) || (idKey && seen.has(idKey))) continue;\n\n  if (urlKey) seen.add(urlKey);\n  if (idKey) seen.add(idKey);\n  fresh.push({ json: job });\n}\n\nreturn fresh;"
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Skipped",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "filter-new-jobs-14",
+      "name": "Filter New Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Anti-join the scrape against everything already in the sheet, then cap the\n// batch so one run cannot burn the whole model quota on a broad scrape.\n//\n// BOTH tabs feed the dedupe set. An application already sent and a job already\n// rejected are equally jobs we must not pay to score a second time - reading\n// only Applications means every reject gets re-scored every single run.\nconst config = $('Config').first().json;\nconst maxJobs = Number(config.maxJobsPerRun) || 25;\n\nconst key = (value) => String(value ?? '').trim().toLowerCase().split('?')[0].replace(/\\/$/, '');\n\nconst seen = new Set();\nfor (const row of [...$('Get Logged Jobs').all(), ...$('Get Skipped Jobs').all()]) {\n  const record = row.json ?? {};\n  for (const column of ['Job URL', 'Job ID']) {\n    const value = key(record[column]);\n    if (value) seen.add(value);\n  }\n}\n\nconst fresh = [];\nfor (const item of $('Match Search Terms').all()) {\n  if (fresh.length >= maxJobs) break;\n\n  const job = item.json;\n  const urlKey = key(job.url);\n  const idKey = key(job.jobId);\n  if ((urlKey && seen.has(urlKey)) || (idKey && seen.has(idKey))) continue;\n\n  if (urlKey) seen.add(urlKey);\n  if (idKey) seen.add(idKey);\n  fresh.push({ json: job });\n}\n\nreturn fresh;"
       }
     },
     {
-      "id": "loop-over-jobs-14",
+      "id": "loop-over-jobs-15",
       "name": "Loop Over Jobs",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
       "position": [
-        1760,
+        1980,
         300
       ],
       "parameters": {
@@ -437,12 +462,12 @@
       }
     },
     {
-      "id": "throttle-15",
+      "id": "throttle-16",
       "name": "Throttle",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
       "position": [
-        1980,
+        2200,
         420
       ],
       "parameters": {
@@ -452,7 +477,7 @@
       "webhookId": "throttle-between-jobs"
     },
     {
-      "id": "score-job-relevance-16",
+      "id": "score-job-relevance-17",
       "name": "Score Job Relevance",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.5,
@@ -477,7 +502,7 @@
       "waitBetweenTries": 4000
     },
     {
-      "id": "scoring-model-17",
+      "id": "scoring-model-18",
       "name": "Scoring Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
@@ -494,7 +519,7 @@
       }
     },
     {
-      "id": "relevance-schema-18",
+      "id": "relevance-schema-19",
       "name": "Relevance Schema",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.2,
@@ -508,7 +533,7 @@
       }
     },
     {
-      "id": "merge-score-19",
+      "id": "merge-score-20",
       "name": "Merge Score",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -521,7 +546,7 @@
       }
     },
     {
-      "id": "worth-applying-20",
+      "id": "worth-applying-21",
       "name": "Worth Applying?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
@@ -565,7 +590,7 @@
       }
     },
     {
-      "id": "write-tailored-resume-21",
+      "id": "write-tailored-resume-22",
       "name": "Write Tailored Resume",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.5,
@@ -589,7 +614,7 @@
       "waitBetweenTries": 4000
     },
     {
-      "id": "resume-model-22",
+      "id": "resume-model-23",
       "name": "Resume Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
       "typeVersion": 1,
@@ -606,7 +631,7 @@
       }
     },
     {
-      "id": "clean-resume-html-23",
+      "id": "clean-resume-html-24",
       "name": "Clean Resume HTML",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -619,7 +644,7 @@
       }
     },
     {
-      "id": "build-drive-upload-24",
+      "id": "build-drive-upload-25",
       "name": "Build Drive Upload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -632,7 +657,7 @@
       }
     },
     {
-      "id": "create-google-doc-25",
+      "id": "create-google-doc-26",
       "name": "Create Google Doc",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -673,7 +698,7 @@
       "waitBetweenTries": 3000
     },
     {
-      "id": "build-log-row-26",
+      "id": "build-log-row-27",
       "name": "Build Log Row",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -686,7 +711,7 @@
       }
     },
     {
-      "id": "log-application-27",
+      "id": "log-application-28",
       "name": "Log Application",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -720,7 +745,7 @@
       "waitBetweenTries": 3000
     },
     {
-      "id": "build-skipped-row-28",
+      "id": "build-skipped-row-29",
       "name": "Build Skipped Row",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -733,7 +758,7 @@
       }
     },
     {
-      "id": "log-skipped-29",
+      "id": "log-skipped-30",
       "name": "Log Skipped",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
@@ -767,12 +792,12 @@
       "waitBetweenTries": 3000
     },
     {
-      "id": "build-run-summary-30",
+      "id": "build-run-summary-31",
       "name": "Build Run Summary",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
+        2220,
         120
       ],
       "parameters": {
@@ -780,12 +805,12 @@
       }
     },
     {
-      "id": "email-run-summary-31",
+      "id": "email-run-summary-32",
       "name": "Email Run Summary",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.1,
       "position": [
-        2220,
+        2440,
         120
       ],
       "parameters": {
@@ -799,7 +824,7 @@
       "disabled": true
     },
     {
-      "id": "part-1-32",
+      "id": "part-1-33",
       "name": "Part 1",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -815,7 +840,7 @@
       }
     },
     {
-      "id": "part-2-33",
+      "id": "part-2-34",
       "name": "Part 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -831,7 +856,7 @@
       }
     },
     {
-      "id": "part-3-34",
+      "id": "part-3-35",
       "name": "Part 3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -840,14 +865,14 @@
         60
       ],
       "parameters": {
-        "content": "## Part 3 - Normalise, filter, de-duplicate\n\n`Normalize Jobs` flattens whatever shape the source returned into one consistent job object - it maps ~40 field names across LinkedIn, the aggregators, and the three ATS formats.\n\n`Match Search Terms` is the cheapest filter here: `titleKeywords` / `excludeKeywords` drop jobs **before** any model reads them. The aggregators return everything they have, so this is what keeps the run relevant.\n\n`Get Logged Jobs` + `Filter New Jobs` anti-join against the sheet so a job is never scored twice, and cap the batch at `maxJobsPerRun`.\n\n`Loop Over Jobs` runs one job at a time from here on.",
+        "content": "## Part 3 - Normalise, filter, de-duplicate\n\n`Normalize Jobs` flattens whatever shape the source returned into one consistent job object - it maps ~40 field names across LinkedIn, the aggregators, and the three ATS formats.\n\n`Match Search Terms` is the cheapest filter here: `titleKeywords` / `excludeKeywords` drop jobs **before** any model reads them. The aggregators return everything they have, so this is what keeps the run relevant.\n\n`Get Logged Jobs` + `Get Skipped Jobs` + `Filter New Jobs` anti-join against **both** sheet tabs, so neither a job you applied to nor one you already rejected is ever scored twice, and cap the batch at `maxJobsPerRun`.\n\n`Loop Over Jobs` runs one job at a time from here on.",
         "height": 520,
         "width": 860,
         "color": 4
       }
     },
     {
-      "id": "part-4-35",
+      "id": "part-4-36",
       "name": "Part 4",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -863,7 +888,7 @@
       }
     },
     {
-      "id": "part-5-36",
+      "id": "part-5-37",
       "name": "Part 5",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -879,7 +904,7 @@
       }
     },
     {
-      "id": "part-6-37",
+      "id": "part-6-38",
       "name": "Part 6",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -895,7 +920,7 @@
       }
     },
     {
-      "id": "part-7-38",
+      "id": "part-7-39",
       "name": "Part 7",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -911,7 +936,7 @@
       }
     },
     {
-      "id": "part-8-39",
+      "id": "part-8-40",
       "name": "Part 8",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
@@ -1057,6 +1082,17 @@
       ]
     },
     "Get Logged Jobs": {
+      "main": [
+        [
+          {
+            "node": "Get Skipped Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Skipped Jobs": {
       "main": [
         [
           {

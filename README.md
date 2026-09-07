@@ -143,10 +143,18 @@ edit the file, rebuild, re-import:
 
 ```bash
 npm run build   # regenerate workflows/job-application-automation.json
-npm test        # build + 17 Code node tests + structural validation
+npm test        # build + 25 Code node tests + structural validation
+npm run e2e     # drive the whole pipeline end to end, without n8n
 ```
 
-`npm test` runs each Code node outside n8n against fixtures — 24 tests covering
+`npm run e2e` runs the committed workflow outside n8n — real Code nodes, real
+prompts, real expressions, with only the outbound calls substituted. It parses
+the Drive upload body the way Drive does and writes the generated resumes to
+`build/e2e-output/`. Set `GEMINI_API_KEY` to drive the real model. Details and
+the re-run check are in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-end-to-end-runner).
+
+`npm test` runs each Code node outside n8n against fixtures — 25 tests covering
 seven different job-source output shapes (LinkedIn actors, Arbeitnow, RemoteOK,
 Greenhouse, Lever), an empty first-run sheet, a malformed model response, and
 the `multipart/related` body that makes Drive produce a Doc rather than an HTML

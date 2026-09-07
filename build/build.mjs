@@ -181,9 +181,15 @@ const nodes = [
     options: {},
   }, { alwaysOutputData: true, onError: 'continueRegularOutput' }),
 
-  codeNode('Filter New Jobs', [1540, 300], 'filter-new-jobs.js'),
+  // The Skipped tab is read too, so a rejected job is never re-scored.
+  node('Get Skipped Jobs', 'n8n-nodes-base.googleSheets', 4.5, [1540, 300], {
+    ...GOOGLE_SHEET('Skipped'),
+    options: {},
+  }, { alwaysOutputData: true, onError: 'continueRegularOutput' }),
 
-  node('Loop Over Jobs', 'n8n-nodes-base.splitInBatches', 3, [1760, 300], {
+  codeNode('Filter New Jobs', [1760, 300], 'filter-new-jobs.js'),
+
+  node('Loop Over Jobs', 'n8n-nodes-base.splitInBatches', 3, [1980, 300], {
     options: { reset: false },
   }),
 
@@ -191,7 +197,7 @@ const nodes = [
   // Part 4 - AI relevance scoring
   // -------------------------------------------------------------------------
   // Free-tier models are rate-limited per minute, so pace the loop.
-  node('Throttle', 'n8n-nodes-base.wait', 1.1, [1980, 420], {
+  node('Throttle', 'n8n-nodes-base.wait', 1.1, [2200, 420], {
     amount: "={{ $('Config').first().json.throttleSeconds }}",
     unit: 'seconds',
   }, { webhookId: 'throttle-between-jobs' }),
@@ -305,9 +311,9 @@ const nodes = [
     options: {},
   }, { retryOnFail: true, maxTries: 3, waitBetweenTries: 3000 }),
 
-  codeNode('Build Run Summary', [2000, 120], 'build-summary.js'),
+  codeNode('Build Run Summary', [2220, 120], 'build-summary.js'),
 
-  node('Email Run Summary', 'n8n-nodes-base.gmail', 2.1, [2220, 120], {
+  node('Email Run Summary', 'n8n-nodes-base.gmail', 2.1, [2440, 120], {
     sendTo: "={{ $('Config').first().json.notifyEmail }}",
     subject: '={{ $json.subject }}',
     message: '={{ $json.html }}',
@@ -324,7 +330,7 @@ nodes.push(
   sticky(2, 520, 840, [140, 60],
     '## Part 2 - Find the jobs\n\n`Config.jobSource` picks the path.\n\n**`free` (default)** - keyless public endpoints, no account and no credit:\n- **Arbeitnow** and **RemoteOK** aggregators (broad, noisy, filtered in Part 3)\n- **Greenhouse / Lever / Ashby** company boards - narrow, high signal, and where you actually apply. Add companies in Config.\n\n**`apify`** - the LinkedIn scraper. Better coverage, but needs an Apify token and burns credit. Credential: **Header Auth**, `Authorization` = `Bearer <APIFY_TOKEN>`.\n\nBoth paths continue on error, so one dead source cannot kill the run.'),
   sticky(3, 520, 860, [1000, 60],
-    '## Part 3 - Normalise, filter, de-duplicate\n\n`Normalize Jobs` flattens whatever shape the source returned into one consistent job object - it maps ~40 field names across LinkedIn, the aggregators, and the three ATS formats.\n\n`Match Search Terms` is the cheapest filter here: `titleKeywords` / `excludeKeywords` drop jobs **before** any model reads them. The aggregators return everything they have, so this is what keeps the run relevant.\n\n`Get Logged Jobs` + `Filter New Jobs` anti-join against the sheet so a job is never scored twice, and cap the batch at `maxJobsPerRun`.\n\n`Loop Over Jobs` runs one job at a time from here on.'),
+    '## Part 3 - Normalise, filter, de-duplicate\n\n`Normalize Jobs` flattens whatever shape the source returned into one consistent job object - it maps ~40 field names across LinkedIn, the aggregators, and the three ATS formats.\n\n`Match Search Terms` is the cheapest filter here: `titleKeywords` / `excludeKeywords` drop jobs **before** any model reads them. The aggregators return everything they have, so this is what keeps the run relevant.\n\n`Get Logged Jobs` + `Get Skipped Jobs` + `Filter New Jobs` anti-join against **both** sheet tabs, so neither a job you applied to nor one you already rejected is ever scored twice, and cap the batch at `maxJobsPerRun`.\n\n`Loop Over Jobs` runs one job at a time from here on.'),
   sticky(4, 480, 460, [2120, 900],
     '## Part 4 - AI relevance scoring\n\n**Gemini 2.0 Flash on the free tier**, temperature 0.1, with a structured output schema so the score is a number you can filter on rather than prose.\n\n`Throttle` paces the loop at `throttleSeconds` (default 10s) to stay under the free tier per-minute limit.\n\nTo pay for better output instead, replace this node with an **OpenAI Chat Model** - nothing else changes.\n\nPrompt: `src/prompts/relevance-system.md`.'),
   sticky(5, 220, 420, [2600, 900],
@@ -362,7 +368,8 @@ const connections = {
   'Scrape LinkedIn Jobs': { main: main('Normalize Jobs') },
   'Normalize Jobs': { main: main('Match Search Terms') },
   'Match Search Terms': { main: main('Get Logged Jobs') },
-  'Get Logged Jobs': { main: main('Filter New Jobs') },
+  'Get Logged Jobs': { main: main('Get Skipped Jobs') },
+  'Get Skipped Jobs': { main: main('Filter New Jobs') },
   'Filter New Jobs': { main: main('Loop Over Jobs') },
 
   // Output 0 is the "done" branch, output 1 is the per-batch branch.
