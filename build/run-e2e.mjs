@@ -184,8 +184,26 @@ const promptsFor = (name, $json) => {
   return { system: p.messages.messageValues[0].message, user: resolve(p.text, $json) };
 };
 
-const callGemini = async (nodeName, system, user, wantJson) => {
-  const model = N(nodeName).parameters.modelName.replace(/^models\//, '');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Free-tier Flash returns 503 UNAVAILABLE under load often enough that a
+// single attempt is not a real test. The workflow's own nodes retry too.
+// n8n's outputParserStructured injects the schema into the prompt so the model
+// emits the exact keys. The runner gets the same effect - more strictly - by
+// deriving a responseSchema from the parser node's own jsonSchemaExample.
+const responseSchemaFromExample = () => {
+  const example = JSON.parse(N('Relevance Schema').parameters.jsonSchemaExample);
+  const typeOf = (v) => (typeof v === 'number' ? 'NUMBER' : typeof v === 'boolean' ? 'BOOLEAN' : 'STRING');
+  return {
+    type: 'OBJECT',
+    properties: Object.fromEntries(Object.entries(example).map(([k, v]) => [k, { type: typeOf(v) }])),
+    required: Object.keys(example),
+    propertyOrdering: Object.keys(example),
+  };
+};
+
+const callGemini = async (nodeName, system, user, wantJson, attempt = 1) => {
+  const model = process.env.E2E_MODEL ?? N(nodeName).parameters.modelName.replace(/^models\//, '');
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`,
     {
@@ -197,14 +215,32 @@ const callGemini = async (nodeName, system, user, wantJson) => {
         generationConfig: {
           temperature: N(nodeName).parameters.options.temperature,
           maxOutputTokens: N(nodeName).parameters.options.maxOutputTokens,
-          ...(wantJson ? { responseMimeType: 'application/json' } : {}),
+          ...(wantJson
+            ? { responseMimeType: 'application/json', responseSchema: responseSchemaFromExample() }
+            : {}),
         },
       }),
     },
   );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const body = (await res.text()).slice(0, 200);
+    const retryable = res.status === 503 || res.status === 429 || res.status >= 500;
+    if (retryable && attempt < 5) {
+      const wait = 2000 * 2 ** (attempt - 1);
+      say(`       ${res.status} from ${model}, retry ${attempt}/4 in ${wait / 1000}s`);
+      await sleep(wait);
+      return callGemini(nodeName, system, user, wantJson, attempt + 1);
+    }
+    throw new Error(`Gemini ${res.status} after ${attempt} attempt(s): ${body}`);
+  }
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') ?? '';
+  if (process.env.E2E_DUMP) {
+    const u = data.usageMetadata ?? {};
+    say(`       [${nodeName}] finish=${data.candidates?.[0]?.finishReason} thoughts=${u.thoughtsTokenCount ?? 0} out=${u.candidatesTokenCount ?? 0}`);
+    say(`       [raw] ${text.replace(/\s+/g, ' ').slice(0, 420)}`);
+  }
+  return text;
 };
 
 // Deterministic stand-in: scores on how much of the posting's vocabulary the

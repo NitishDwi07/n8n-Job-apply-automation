@@ -207,13 +207,23 @@ const nodes = [
     text: `=${prompt('relevance-user.md')}`,
     hasOutputParser: true,
     messages: { messageValues: [{ message: prompt('relevance-system.md') }] },
-  }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 4000 }),
+    // Free-tier Flash returns 503 UNAVAILABLE under load; observed in testing.
+  }, { retryOnFail: true, maxTries: 4, waitBetweenTries: 8000 }),
 
-  // Gemini Flash on the free tier. Swap in lmChatOpenAi here if you would
-  // rather pay for GPT-4o - nothing else in the graph changes.
+  // Gemini Flash on the free tier. `gemini-flash-latest` is a floating alias
+  // rather than a pinned version deliberately: a pin that Google retires makes
+  // the workflow fail on import with "model not found", which is exactly what
+  // a stale `gemini-2.0-flash` did here. Pin a version if you would rather
+  // have stable scoring - see docs/SETUP.md.
+  // Swap in lmChatOpenAi here if you would rather pay for GPT-4o; nothing
+  // else in the graph changes.
   node('Scoring Model', '@n8n/n8n-nodes-langchain.lmChatGoogleGemini', 1, [2160, 660], {
-    modelName: 'models/gemini-2.0-flash',
-    options: { temperature: 0.1, maxOutputTokens: 700 },
+    modelName: 'models/gemini-flash-latest',
+    // Gemini 3.x Flash spends output budget on reasoning tokens before it
+    // emits anything - measured ~550-660 thinking tokens on this prompt. A
+    // 700-token cap left 63 tokens for the answer and truncated the JSON, so
+    // this budget covers thinking AND the structured result.
+    options: { temperature: 0.1, maxOutputTokens: 3000 },
   }),
 
   node('Relevance Schema', '@n8n/n8n-nodes-langchain.outputParserStructured', 1.2, [2340, 660], {
@@ -256,11 +266,12 @@ const nodes = [
     promptType: 'define',
     text: `=${prompt('resume-user.md')}`,
     messages: { messageValues: [{ message: prompt('resume-system.md') }] },
-  }, { retryOnFail: true, maxTries: 2, waitBetweenTries: 4000 }),
+  }, { retryOnFail: true, maxTries: 4, waitBetweenTries: 8000 }),
 
   node('Resume Model', '@n8n/n8n-nodes-langchain.lmChatGoogleGemini', 1, [2880, 540], {
-    modelName: 'models/gemini-2.0-flash',
-    options: { temperature: 0.4, maxOutputTokens: 4000 },
+    modelName: 'models/gemini-flash-latest',
+    // Same reason, plus a full resume document to emit.
+    options: { temperature: 0.4, maxOutputTokens: 8000 },
   }),
 
   codeNode('Clean Resume HTML', [3100, 300], 'clean-resume-html.js'),
@@ -332,7 +343,7 @@ nodes.push(
   sticky(3, 520, 860, [1000, 60],
     '## Part 3 - Normalise, filter, de-duplicate\n\n`Normalize Jobs` flattens whatever shape the source returned into one consistent job object - it maps ~40 field names across LinkedIn, the aggregators, and the three ATS formats.\n\n`Match Search Terms` is the cheapest filter here: `titleKeywords` / `excludeKeywords` drop jobs **before** any model reads them. The aggregators return everything they have, so this is what keeps the run relevant.\n\n`Get Logged Jobs` + `Get Skipped Jobs` + `Filter New Jobs` anti-join against **both** sheet tabs, so neither a job you applied to nor one you already rejected is ever scored twice, and cap the batch at `maxJobsPerRun`.\n\n`Loop Over Jobs` runs one job at a time from here on.'),
   sticky(4, 480, 460, [2120, 900],
-    '## Part 4 - AI relevance scoring\n\n**Gemini 2.0 Flash on the free tier**, temperature 0.1, with a structured output schema so the score is a number you can filter on rather than prose.\n\n`Throttle` paces the loop at `throttleSeconds` (default 10s) to stay under the free tier per-minute limit.\n\nTo pay for better output instead, replace this node with an **OpenAI Chat Model** - nothing else changes.\n\nPrompt: `src/prompts/relevance-system.md`.'),
+    '## Part 4 - AI relevance scoring\n\n**Gemini Flash on the free tier**, temperature 0.1, with a structured output schema so the score is a number you can filter on rather than prose.\n\n`Throttle` paces the loop at `throttleSeconds` (default 10s) to stay under the free tier per-minute limit.\n\nTo pay for better output instead, replace this node with an **OpenAI Chat Model** - nothing else changes.\n\nPrompt: `src/prompts/relevance-system.md`.'),
   sticky(5, 220, 420, [2600, 900],
     '## Part 5 - Filter\n\nKeeps jobs scoring at or above `relevanceThreshold` with no deal-breaker hit. Everything else is logged to the **Skipped** tab, which is how you find out your threshold or your search queries need tuning.'),
   sticky(6, 440, 420, [2840, 60],

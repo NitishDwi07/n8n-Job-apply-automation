@@ -84,6 +84,25 @@ The only AI credential you need, and it costs nothing.
 2. In n8n create a **Google Gemini(PaLM) API** credential and paste the key.
 3. Assign it to both `Scoring Model` and `Resume Model`.
 
+**On the model name.** Both nodes use `models/gemini-flash-latest`, a floating
+alias, on purpose: a pinned version that Google retires makes the workflow fail
+on import with "model not found". Check what your key actually offers with
+
+```bash
+curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=YOUR_KEY&pageSize=100" \
+  | grep -o '"name": "models/[^"]*"'
+```
+
+Pin a specific version if you would rather have stable scoring over time. If
+you hit repeated `503 UNAVAILABLE`, the alias is pointing at a busy model —
+pin a quieter one. Both AI nodes retry four times with 8s backoff.
+
+**Do not lower `maxOutputTokens`.** Gemini 3.x Flash spends output budget on
+reasoning tokens before emitting anything — measured at 550–740 thinking
+tokens on the screening prompt alone. The 700-token cap this workflow shipped
+with left 63 tokens for the answer and truncated the JSON. The budgets are now
+3000 (scoring) and 8000 (resume) to cover thinking plus the result.
+
 > Free-tier Gemini usage may be used to improve Google's models, and this
 > workflow sends your full resume on every call. See
 > [COSTS.md](COSTS.md#the-privacy-trade) for the trade and the paid alternatives.

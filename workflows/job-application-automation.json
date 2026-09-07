@@ -498,8 +498,8 @@
         }
       },
       "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 4000
+      "maxTries": 4,
+      "waitBetweenTries": 8000
     },
     {
       "id": "scoring-model-18",
@@ -511,10 +511,10 @@
         660
       ],
       "parameters": {
-        "modelName": "models/gemini-2.0-flash",
+        "modelName": "models/gemini-flash-latest",
         "options": {
           "temperature": 0.1,
-          "maxOutputTokens": 700
+          "maxOutputTokens": 3000
         }
       }
     },
@@ -542,7 +542,7 @@
         420
       ],
       "parameters": {
-        "jsCode": "// The LLM chain only returns `output`, so re-attach the job it was scoring.\n// Batch size is 1, which is what makes `.first()` the current job.\nconst job = $('Loop Over Jobs').first().json;\nconst score = $json.output ?? {};\n\nconst clamp = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));\n\nreturn [\n  {\n    json: {\n      ...job,\n      score: clamp(score.score),\n      relevant: score.relevant === true,\n      verdict: String(score.verdict ?? '').slice(0, 120),\n      matchReasons: String(score.matchReasons ?? '').slice(0, 1000),\n      gaps: String(score.gaps ?? '').slice(0, 1000),\n      dealBreakerHit: score.dealBreakerHit === true,\n      suggestedResumeAngle: String(score.suggestedResumeAngle ?? '').slice(0, 500),\n      scoredAt: new Date().toISOString(),\n    },\n  },\n];"
+        "jsCode": "// The LLM chain only returns `output`, so re-attach the job it was scoring.\n// Batch size is 1, which is what makes `.first()` the current job.\nconst job = $('Loop Over Jobs').first().json;\nconst score = $json.output ?? {};\n\n// A model that drifts off the schema used to land here as a silent score of 0,\n// which is indistinguishable from a real rejection - so a broken screener\n// would quietly skip every job while looking like it was working. Drift is\n// systematic rather than per-job, so fail on the first one instead.\nif (score === null || typeof score !== 'object' || Number.isNaN(Number(score.score))) {\n  throw new Error(\n    `Screener returned no usable \"score\" (got keys: ${Object.keys(score ?? {}).join(', ') || 'none'}). ` +\n      'Check that the Relevance Schema output parser is still attached to Score Job Relevance.',\n  );\n}\n\nconst clamp = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));\n\nreturn [\n  {\n    json: {\n      ...job,\n      score: clamp(score.score),\n      relevant: score.relevant === true,\n      verdict: String(score.verdict ?? '').slice(0, 120),\n      matchReasons: String(score.matchReasons ?? '').slice(0, 1000),\n      gaps: String(score.gaps ?? '').slice(0, 1000),\n      dealBreakerHit: score.dealBreakerHit === true,\n      suggestedResumeAngle: String(score.suggestedResumeAngle ?? '').slice(0, 500),\n      scoredAt: new Date().toISOString(),\n    },\n  },\n];"
       }
     },
     {
@@ -610,8 +610,8 @@
         }
       },
       "retryOnFail": true,
-      "maxTries": 2,
-      "waitBetweenTries": 4000
+      "maxTries": 4,
+      "waitBetweenTries": 8000
     },
     {
       "id": "resume-model-23",
@@ -623,10 +623,10 @@
         540
       ],
       "parameters": {
-        "modelName": "models/gemini-2.0-flash",
+        "modelName": "models/gemini-flash-latest",
         "options": {
           "temperature": 0.4,
-          "maxOutputTokens": 4000
+          "maxOutputTokens": 8000
         }
       }
     },
@@ -881,7 +881,7 @@
         900
       ],
       "parameters": {
-        "content": "## Part 4 - AI relevance scoring\n\n**Gemini 2.0 Flash on the free tier**, temperature 0.1, with a structured output schema so the score is a number you can filter on rather than prose.\n\n`Throttle` paces the loop at `throttleSeconds` (default 10s) to stay under the free tier per-minute limit.\n\nTo pay for better output instead, replace this node with an **OpenAI Chat Model** - nothing else changes.\n\nPrompt: `src/prompts/relevance-system.md`.",
+        "content": "## Part 4 - AI relevance scoring\n\n**Gemini Flash on the free tier**, temperature 0.1, with a structured output schema so the score is a number you can filter on rather than prose.\n\n`Throttle` paces the loop at `throttleSeconds` (default 10s) to stay under the free tier per-minute limit.\n\nTo pay for better output instead, replace this node with an **OpenAI Chat Model** - nothing else changes.\n\nPrompt: `src/prompts/relevance-system.md`.",
         "height": 480,
         "width": 460,
         "color": 4

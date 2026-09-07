@@ -222,10 +222,25 @@ test('merge-score re-attaches the job and clamps the score', () => {
   assert.equal(result.dealBreakerHit, false);
 });
 
-test('merge-score survives a malformed model response', () => {
-  const out = run('merge-score.js', [], { 'Loop Over Jobs': [{ jobId: '9' }] }, { output: undefined });
-  assert.equal(out[0].json.score, 0);
-  assert.equal(out[0].json.relevant, false);
+test('merge-score fails loudly rather than silently scoring 0', () => {
+  // A silent 0 looks exactly like a legitimate rejection, so schema drift
+  // would hide a completely broken screener.
+  assert.throws(
+    () => run('merge-score.js', [], { 'Loop Over Jobs': [{ jobId: '9' }] }, { output: undefined }),
+    /no usable "score"/,
+  );
+  assert.throws(
+    () => run('merge-score.js', [], { 'Loop Over Jobs': [{ jobId: '9' }] }, { output: { matchScore: 98 } }),
+    /got keys: matchScore/,
+  );
+});
+
+test('merge-score accepts a score of 0 that the model actually returned', () => {
+  const out = run('merge-score.js', [], { 'Loop Over Jobs': [{ jobId: '9' }] }, {
+    output: { score: 0, relevant: false, verdict: 'not a fit', dealBreakerHit: true },
+  });
+  assert.equal(out[0].json.score, 0, 'a real 0 is data, not an error');
+  assert.equal(out[0].json.dealBreakerHit, true);
 });
 
 // ---------------------------------------------------------------------------
