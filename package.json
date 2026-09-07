@@ -1,0 +1,15 @@
+{
+  "name": "n8n-job-apply-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI job application automation for n8n: scrape LinkedIn via Apify, score relevance with GPT-4o, write a tailored resume per job, create a Google Doc, log to Google Sheets.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "node build/build.mjs",
+    "validate": "node build/validate.mjs",
+    "test:code": "node build/test-code-nodes.mjs",
+    "test": "npm run build && npm run test:code && npm run validate"
+  },
+  "license": "MIT"
+}

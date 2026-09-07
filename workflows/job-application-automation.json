@@ -1,0 +1,1089 @@
+{
+  "name": "AI Job Application Automation",
+  "active": false,
+  "nodes": [
+    {
+      "id": "run-every-weekday-morning-1",
+      "name": "Run Every Weekday Morning",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -660,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "run-manually-2",
+      "name": "Run Manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -660,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "config-3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -440,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c01",
+              "name": "googleSheetId",
+              "type": "string",
+              "value": "PUT_GOOGLE_SHEET_ID_HERE"
+            },
+            {
+              "id": "c02",
+              "name": "masterResumeDocId",
+              "type": "string",
+              "value": "PUT_MASTER_RESUME_GOOGLE_DOC_ID_HERE"
+            },
+            {
+              "id": "c03",
+              "name": "driveFolderId",
+              "type": "string",
+              "value": "PUT_DRIVE_FOLDER_ID_HERE"
+            },
+            {
+              "id": "c04",
+              "name": "apifyActorId",
+              "type": "string",
+              "value": "bebity~linkedin-jobs-scraper"
+            },
+            {
+              "id": "c05",
+              "name": "maxJobsPerRun",
+              "type": "number",
+              "value": 25
+            },
+            {
+              "id": "c06",
+              "name": "relevanceThreshold",
+              "type": "number",
+              "value": 70
+            },
+            {
+              "id": "c07",
+              "name": "candidateName",
+              "type": "string",
+              "value": "Your Name"
+            },
+            {
+              "id": "c08",
+              "name": "candidateEmail",
+              "type": "string",
+              "value": "you@example.com"
+            },
+            {
+              "id": "c09",
+              "name": "candidatePhone",
+              "type": "string",
+              "value": "+1 555 0100"
+            },
+            {
+              "id": "c10",
+              "name": "candidateLinkedIn",
+              "type": "string",
+              "value": "linkedin.com/in/your-handle"
+            },
+            {
+              "id": "c11",
+              "name": "candidateLocation",
+              "type": "string",
+              "value": "Berlin, Germany - open to remote in EU, no relocation"
+            },
+            {
+              "id": "c12",
+              "name": "desiredRoles",
+              "type": "string",
+              "value": "Senior Backend Engineer, Platform Engineer, Data Engineer"
+            },
+            {
+              "id": "c13",
+              "name": "mustHaves",
+              "type": "string",
+              "value": "Python or Go, cloud infrastructure ownership, remote-friendly"
+            },
+            {
+              "id": "c14",
+              "name": "dealBreakers",
+              "type": "string",
+              "value": "On-site five days a week, unpaid internship, commission-only pay, security clearance required"
+            },
+            {
+              "id": "c15",
+              "name": "minSalary",
+              "type": "string",
+              "value": "80000 EUR base"
+            },
+            {
+              "id": "c16",
+              "name": "notifyEmail",
+              "type": "string",
+              "value": "you@example.com"
+            },
+            {
+              "id": "c17",
+              "name": "searchQueries",
+              "type": "array",
+              "value": "={{ [\n  { title: 'Senior Backend Engineer', location: 'Germany', rows: 50, publishedAt: 'r604800' },\n  { title: 'Platform Engineer', location: 'European Union', rows: 50, publishedAt: 'r604800' }\n] }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fetch-master-resume-4",
+      "name": "Fetch Master Resume",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -220,
+        300
+      ],
+      "parameters": {
+        "url": "=https://www.googleapis.com/drive/v3/files/{{ $('Config').first().json.masterResumeDocId }}/export",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "mimeType",
+              "value": "text/plain"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "expand-searches-5",
+      "name": "Expand Searches",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// One item per saved search. Whatever keys you put on a search in the Config\n// node are forwarded verbatim to the Apify actor, so this only fills defaults\n// and fails loudly on an empty config rather than scraping nothing.\nconst config = $('Config').first().json;\nconst queries = Array.isArray(config.searchQueries) ? config.searchQueries : [];\n\nif (queries.length === 0) {\n  throw new Error('Config.searchQueries is empty - add at least one { title, location } search.');\n}\n\nreturn queries.map((query, index) => ({\n  json: {\n    rows: 50,\n    publishedAt: 'r604800', // LinkedIn's \"past week\" filter\n    ...query,\n    searchIndex: index,\n  },\n}));"
+      }
+    },
+    {
+      "id": "scrape-linkedin-jobs-6",
+      "name": "Scrape LinkedIn Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{ $('Config').first().json.apifyActorId }}/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "timeout",
+              "value": "280"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.fromEntries(Object.entries($json).filter(([key, value]) => key !== 'searchIndex' && value !== '' && value !== null && value !== undefined))) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "id": "normalize-jobs-7",
+      "name": "Normalize Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Every LinkedIn jobs actor on Apify invents its own field names, and some\n// return one item holding an array instead of one item per job. Normalising\n// here is what lets you swap actors without touching the rest of the workflow.\nconst asText = (value) => {\n  if (value === null || value === undefined) return '';\n  if (typeof value === 'string') return value.trim();\n  if (typeof value === 'number' || typeof value === 'boolean') return String(value);\n  if (Array.isArray(value)) return value.map(asText).filter(Boolean).join(', ');\n  if (typeof value === 'object') return asText(value.name ?? value.text ?? value.title ?? value.value ?? '');\n  return '';\n};\n\nconst pick = (obj, paths) => {\n  for (const path of paths) {\n    const value = path.split('.').reduce((acc, key) => (acc === null || acc === undefined ? acc : acc[key]), obj);\n    const text = asText(value);\n    if (text) return text;\n  }\n  return '';\n};\n\nconst stripHtml = (text) =>\n  text.includes('<')\n    ? text\n        .replace(/<(script|style)[\\s\\S]*?<\\/\\1>/gi, '')\n        .replace(/<\\/(p|div|li|br|h[1-6])>/gi, '\\n')\n        .replace(/<[^>]+>/g, '')\n        .replace(/&nbsp;/g, ' ')\n        .replace(/&amp;/g, '&')\n        .replace(/&lt;/g, '<')\n        .replace(/&gt;/g, '>')\n        .replace(/\\n{3,}/g, '\\n\\n')\n        .trim()\n    : text;\n\nconst canonicalUrl = (url) => url.split('?')[0].replace(/\\/$/, '');\n\nconst jobs = [];\nconst seen = new Set();\n\nfor (const item of $input.all()) {\n  const payload = item.json ?? {};\n\n  // The Apify node is set to continue on error so one dead search does not\n  // kill the run; those items arrive with an `error` key and no job fields.\n  if (payload.error && !payload.title && !payload.jobTitle) continue;\n\n  const batch = Array.isArray(payload)\n    ? payload\n    : Array.isArray(payload.jobs)\n      ? payload.jobs\n      : Array.isArray(payload.items)\n        ? payload.items\n        : [payload];\n\n  for (const job of batch) {\n    if (!job || typeof job !== 'object') continue;\n\n    const url = canonicalUrl(pick(job, ['jobUrl', 'link', 'url', 'jobPostingUrl', 'applyUrl']));\n    const title = pick(job, ['title', 'jobTitle', 'position', 'name']);\n    if (!url && !title) continue;\n\n    const jobId = pick(job, ['id', 'jobId', 'jobPostingId', 'trackingId']) || url;\n    if (seen.has(jobId)) continue;\n    seen.add(jobId);\n\n    jobs.push({\n      json: {\n        jobId,\n        title,\n        company: pick(job, ['companyName', 'company.name', 'company', 'companyDetails.name', 'organization']),\n        location: pick(job, ['location', 'jobLocation', 'formattedLocation', 'locationName']),\n        url,\n        applyUrl: pick(job, ['applyUrl', 'applicationUrl', 'jobUrl', 'link', 'url']),\n        description: stripHtml(\n          pick(job, ['descriptionText', 'description', 'jobDescription', 'descriptionHtml', 'snippet']),\n        ).slice(0, 12000),\n        postedAt: pick(job, ['postedAt', 'publishedAt', 'listedAt', 'postedDate', 'date']),\n        salary: pick(job, ['salary', 'salaryInfo', 'compensation', 'formattedSalary']),\n        employmentType: pick(job, ['employmentType', 'contractType', 'jobType']),\n        seniority: pick(job, ['seniorityLevel', 'experienceLevel', 'seniority']),\n        workplaceType: pick(job, ['workplaceType', 'workType', 'locationType', 'remote']),\n        source: 'linkedin',\n        scrapedAt: new Date().toISOString(),\n      },\n    });\n  }\n}\n\nreturn jobs;"
+      }
+    },
+    {
+      "id": "get-logged-jobs-8",
+      "name": "Get Logged Jobs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        660,
+        300
+      ],
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applications",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "filter-new-jobs-9",
+      "name": "Filter New Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Anti-join the scrape against everything already in the sheet (both tabs feed\n// the same dedupe set), then cap the batch so one run cannot burn the whole\n// OpenAI budget on a 700-result scrape.\nconst config = $('Config').first().json;\nconst maxJobs = Number(config.maxJobsPerRun) || 25;\n\nconst key = (value) => String(value ?? '').trim().toLowerCase().split('?')[0].replace(/\\/$/, '');\n\nconst seen = new Set();\nfor (const row of $input.all()) {\n  const record = row.json ?? {};\n  for (const column of ['Job URL', 'Job ID']) {\n    const value = key(record[column]);\n    if (value) seen.add(value);\n  }\n}\n\nconst fresh = [];\nfor (const item of $('Normalize Jobs').all()) {\n  if (fresh.length >= maxJobs) break;\n\n  const job = item.json;\n  const urlKey = key(job.url);\n  const idKey = key(job.jobId);\n  if ((urlKey && seen.has(urlKey)) || (idKey && seen.has(idKey))) continue;\n\n  if (urlKey) seen.add(urlKey);\n  if (idKey) seen.add(idKey);\n  fresh.push({ json: job });\n}\n\nreturn fresh;"
+      }
+    },
+    {
+      "id": "loop-over-jobs-10",
+      "name": "Loop Over Jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "options": {
+          "reset": false
+        }
+      }
+    },
+    {
+      "id": "score-job-relevance-11",
+      "name": "Score Job Relevance",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        1340,
+        420
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=CANDIDATE RESUME\n================\n{{ $('Fetch Master Resume').first().json.data }}\n\nCANDIDATE PREFERENCES\n=====================\nDesired roles: {{ $('Config').first().json.desiredRoles }}\nMust have: {{ $('Config').first().json.mustHaves }}\nDeal-breakers: {{ $('Config').first().json.dealBreakers }}\nMinimum base salary: {{ $('Config').first().json.minSalary }}\nLocation / arrangement: {{ $('Config').first().json.candidateLocation }}\n\nJOB POSTING\n===========\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }}\nWorkplace: {{ $json.workplaceType }}\nEmployment type: {{ $json.employmentType }}\nSeniority: {{ $json.seniority }}\nSalary: {{ $json.salary }}\nPosted: {{ $json.postedAt }}\n\nDescription:\n{{ $json.description }}",
+        "hasOutputParser": true,
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are a blunt technical recruiter screening job postings for one specific candidate.\n\nScore how well the posting matches the candidate's demonstrated experience - not how well they could grow into it. A posting requiring a skill the resume never mentions is not a strong match.\n\nScoring guide (0-100):\n- 85-100: obvious shortlist; meets essentially every stated requirement.\n- 70-84: strong match; missing at most one nice-to-have.\n- 50-69: plausible but a stretch; several requirements unmet.\n- 0-49: wrong role, wrong seniority, wrong domain, or a stated deal-breaker.\n\nHard caps, applied after scoring:\n- Any candidate deal-breaker present in the posting caps the score at 20 and sets dealBreakerHit to true.\n- A seniority gap of more than one level caps the score at 45.\n- A location or work-arrangement conflict the candidate cannot accept caps the score at 30.\n- A stated base salary below the candidate's minimum caps the score at 40.\n\nRules:\n- Never credit the candidate with experience the resume does not state.\n- If the posting text is truncated or unusable, score 0 and say so in gaps.\n- Return only the structured object requested. Keep every string under 300 characters."
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 4000
+    },
+    {
+      "id": "scoring-model-12",
+      "name": "Scoring Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1300,
+        640
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.1,
+          "maxTokens": 700
+        }
+      }
+    },
+    {
+      "id": "relevance-schema-13",
+      "name": "Relevance Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        1480,
+        640
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"relevant\": true,\n  \"score\": 82,\n  \"verdict\": \"strong match\",\n  \"matchReasons\": \"Six years of Python and three years owning ETL pipelines map directly to the data platform ownership described in the posting.\",\n  \"gaps\": \"No stated Kubernetes experience, which the posting lists as required.\",\n  \"dealBreakerHit\": false,\n  \"suggestedResumeAngle\": \"Lead with data platform ownership and the pipeline cost reduction metrics.\"\n}"
+      }
+    },
+    {
+      "id": "merge-score-14",
+      "name": "Merge Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        420
+      ],
+      "parameters": {
+        "jsCode": "// The LLM chain only returns `output`, so re-attach the job it was scoring.\n// Batch size is 1, which is what makes `.first()` the current job.\nconst job = $('Loop Over Jobs').first().json;\nconst score = $json.output ?? {};\n\nconst clamp = (value) => Math.max(0, Math.min(100, Math.round(Number(value) || 0)));\n\nreturn [\n  {\n    json: {\n      ...job,\n      score: clamp(score.score),\n      relevant: score.relevant === true,\n      verdict: String(score.verdict ?? '').slice(0, 120),\n      matchReasons: String(score.matchReasons ?? '').slice(0, 1000),\n      gaps: String(score.gaps ?? '').slice(0, 1000),\n      dealBreakerHit: score.dealBreakerHit === true,\n      suggestedResumeAngle: String(score.suggestedResumeAngle ?? '').slice(0, 500),\n      scoredAt: new Date().toISOString(),\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "worth-applying-15",
+      "name": "Worth Applying?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1780,
+        420
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "g1",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": "={{ $('Config').first().json.relevanceThreshold }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "g2",
+              "leftValue": "={{ $json.dealBreakerHit }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "write-tailored-resume-16",
+      "name": "Write Tailored Resume",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [
+        2020,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=MASTER RESUME - the only source of truth, do not exceed it\n==========================================================\n{{ $('Fetch Master Resume').first().json.data }}\n\nCONTACT LINE - use verbatim\n===========================\n{{ $('Config').first().json.candidateName }} | {{ $('Config').first().json.candidateEmail }} | {{ $('Config').first().json.candidatePhone }} | {{ $('Config').first().json.candidateLinkedIn }} | {{ $('Config').first().json.candidateLocation }}\n\nTARGET POSTING\n==============\nTitle: {{ $json.title }}\nCompany: {{ $json.company }}\nLocation: {{ $json.location }} ({{ $json.workplaceType }})\nSeniority: {{ $json.seniority }}\n\nScreening notes for this posting:\n- Match score: {{ $json.score }}\n- Why it matched: {{ $json.matchReasons }}\n- Gaps to de-emphasise (never fabricate cover for them): {{ $json.gaps }}\n- Suggested angle: {{ $json.suggestedResumeAngle }}\n\nFull posting text:\n{{ $json.description }}\n\nWrite the tailored resume now. Output HTML only.",
+        "messages": {
+          "messageValues": [
+            {
+              "message": "You are an expert resume writer. You rewrite one master resume into a single targeted resume for one specific job posting.\n\nNon-negotiable content rules:\n- Use only facts present in the master resume. Never invent employers, titles, dates, degrees, certifications, metrics, or tools.\n- You may re-order, re-word, re-emphasise, compress, and drop content. You may not add new claims.\n- Mirror the posting's vocabulary only where the master resume already supports it. This is keyword alignment for ATS, not keyword stuffing.\n- Every experience bullet opens with a strong past-tense verb and keeps whatever number the master resume gives it.\n- Keep it to one page of content: at most 5 roles, at most 4 bullets each, no bullet over two lines.\n- Do not include a photo, a headshot placeholder, references, or an \"objective\" section.\n\nOutput format:\n- Return one complete HTML document and nothing else. No markdown, no code fences, no commentary before or after.\n- Use only these tags: html, head, meta, title, style, body, h1, h2, h3, p, ul, li, strong, em, a, hr, div, span, table, tr, td.\n- Put all styling in a single <style> block. This document is converted straight into a Google Doc, which ignores flexbox, grid, float, and position - do not use them. Stick to font-family, font-size (in pt), font-weight, color, margin, padding, text-align, line-height, and border-bottom.\n- Sections in this order: name as h1, a single contact line, Professional Summary (2-3 sentences aimed at this posting), Skills (grouped, drawn only from the master resume), Experience, Education, then Certifications or Projects only if the master resume has them."
+            }
+          ]
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 4000
+    },
+    {
+      "id": "resume-model-17",
+      "name": "Resume Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        2020,
+        520
+      ],
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {
+          "temperature": 0.4,
+          "maxTokens": 4000
+        }
+      }
+    },
+    {
+      "id": "clean-resume-html-18",
+      "name": "Clean Resume HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// The model is told to return bare HTML but wraps it in a fence often enough\n// that stripping one is far cheaper than a retry.\nconst job = $('Merge Score').first().json;\n\nlet html = String($json.text ?? $json.output ?? $json.response ?? '').trim();\nhtml = html\n  .replace(/^```(?:html)?[ \\t]*\\r?\\n?/i, '')\n  .replace(/\\r?\\n?```$/, '')\n  .trim();\n\n// Drop anything the model said before the document itself.\nconst docStart = html.search(/<(!doctype|html|body|h1|div)\\b/i);\nif (docStart > 0) html = html.slice(docStart).trim();\n\nif (!/<html/i.test(html)) {\n  html = `<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>${job.title || 'Resume'}</title></head><body>${html}</body></html>`;\n}\n\nif (html.length < 400) {\n  throw new Error(`Generated resume for \"${job.title}\" is only ${html.length} chars - refusing to upload it.`);\n}\n\nreturn [{ json: { ...job, resumeHtml: html } }];"
+      }
+    },
+    {
+      "id": "build-drive-upload-19",
+      "name": "Build Drive Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2460,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Drive v3 converts an upload into a native Google Doc only when the metadata\n// part declares the target mimeType, and metadata + content in one request\n// means a multipart/related body. Building the body here keeps the HTTP node\n// to a single raw send.\nconst job = $('Merge Score').first().json;\nconst config = $('Config').first().json;\nconst html = $json.resumeHtml;\n\nconst boundary = `n8n_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;\n\nconst safe = (value) =>\n  String(value ?? '')\n    .replace(/[\\\\/:*?\"<>|\\r\\n]+/g, ' ')\n    .replace(/\\s+/g, ' ')\n    .trim();\n\nconst docName = [safe(job.company) || 'Unknown Company', safe(job.title) || 'Role']\n  .join(' - ')\n  .slice(0, 120);\n\nconst metadata = {\n  name: `Resume - ${docName}`,\n  mimeType: 'application/vnd.google-apps.document',\n};\n\nconst folderId = String(config.driveFolderId ?? '').trim();\nif (folderId && !folderId.startsWith('PUT_')) metadata.parents = [folderId];\n\nconst body = [\n  `--${boundary}`,\n  'Content-Type: application/json; charset=UTF-8',\n  '',\n  JSON.stringify(metadata),\n  `--${boundary}`,\n  'Content-Type: text/html; charset=UTF-8',\n  '',\n  html,\n  `--${boundary}--`,\n  '',\n].join('\\r\\n');\n\nreturn [{ json: { ...job, docName: metadata.name, uploadBoundary: boundary, uploadBody: body } }];"
+      }
+    },
+    {
+      "id": "create-google-doc-20",
+      "name": "Create Google Doc",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2680,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/upload/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "uploadType",
+              "value": "multipart"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "id,name,webViewLink"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "=multipart/related; boundary={{ $json.uploadBoundary }}",
+        "body": "={{ $json.uploadBody }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "build-log-row-21",
+      "name": "Build Log Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Keys must match the \"Applications\" header row exactly - the Sheets node is\n// on auto-map, so a renamed key silently creates a new column.\nconst job = $('Build Drive Upload').first().json;\nconst doc = $json ?? {};\nconst docUrl = doc.webViewLink || (doc.id ? `https://docs.google.com/document/d/${doc.id}/edit` : '');\n\nreturn [\n  {\n    json: {\n      'Date': new Date().toISOString().slice(0, 10),\n      'Job ID': job.jobId,\n      'Title': job.title,\n      'Company': job.company,\n      'Location': job.location,\n      'Workplace': job.workplaceType,\n      'Salary': job.salary,\n      'Score': job.score,\n      'Verdict': job.verdict,\n      'Match Reasons': job.matchReasons,\n      'Gaps': job.gaps,\n      'Resume Doc': docUrl,\n      'Job URL': job.url,\n      'Apply URL': job.applyUrl,\n      'Status': 'Resume ready',\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "log-application-22",
+      "name": "Log Application",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        3120,
+        300
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Applications",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "build-skipped-row-23",
+      "name": "Build Skipped Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        700
+      ],
+      "parameters": {
+        "jsCode": "// Skipped jobs are logged too: they are what tells you your threshold or your\n// search queries are wrong, and they keep the dedupe set from re-scoring them.\nconst job = $json;\n\nreturn [\n  {\n    json: {\n      'Date': new Date().toISOString().slice(0, 10),\n      'Job ID': job.jobId,\n      'Title': job.title,\n      'Company': job.company,\n      'Location': job.location,\n      'Score': job.score,\n      'Verdict': job.verdict,\n      'Reason': job.dealBreakerHit ? `Deal-breaker: ${job.gaps}` : job.gaps || job.matchReasons,\n      'Job URL': job.url,\n      'Status': 'Skipped',\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "log-skipped-24",
+      "name": "Log Skipped",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2240,
+        700
+      ],
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config').first().json.googleSheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Skipped",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "id": "build-run-summary-25",
+      "name": "Build Run Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        140
+      ],
+      "parameters": {
+        "jsCode": "// The loop node's \"done\" output replays every item that was fed back into it,\n// which is exactly the two log-row shapes - so the run summary needs no state.\nconst rows = $input.all().map((item) => item.json ?? {});\nconst applied = rows.filter((row) => row.Status === 'Resume ready');\nconst skipped = rows.filter((row) => row.Status === 'Skipped');\n\nconst byScore = [...applied].sort((a, b) => Number(b.Score) - Number(a.Score));\n\nconst escape = (value) =>\n  String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n\nconst list = byScore\n  .map(\n    (row) =>\n      `<li><strong>${escape(row.Score)}</strong> - ${escape(row.Title)} at ${escape(row.Company)} (${escape(row.Location)})<br>` +\n      `<a href=\"${escape(row['Resume Doc'])}\">Tailored resume</a> &middot; <a href=\"${escape(row['Job URL'])}\">Posting</a></li>`,\n  )\n  .join('\\n');\n\nconst html = `<p>Scored <strong>${rows.length}</strong> new postings.</p>\n<p><strong>${applied.length}</strong> cleared the threshold and have a tailored resume waiting. <strong>${skipped.length}</strong> were skipped.</p>\n${list ? `<ul>\\n${list}\\n</ul>` : '<p>Nothing cleared the threshold this run.</p>'}`;\n\nreturn [\n  {\n    json: {\n      scored: rows.length,\n      resumesGenerated: applied.length,\n      skipped: skipped.length,\n      topScore: byScore.length ? Number(byScore[0].Score) : 0,\n      subject: `${applied.length} tailored resume${applied.length === 1 ? '' : 's'} ready (${rows.length} jobs scored)`,\n      html,\n    },\n  },\n];"
+      }
+    },
+    {
+      "id": "email-run-summary-26",
+      "name": "Email Run Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1560,
+        140
+      ],
+      "parameters": {
+        "sendTo": "={{ $('Config').first().json.notifyEmail }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "disabled": true
+    },
+    {
+      "id": "part-1-27",
+      "name": "Part 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 1 - Config and master resume\n\nEverything you need to change lives in the **Config** node: sheet ID, master resume Doc ID, Drive folder, your contact details, your deal-breakers, and your saved searches.\n\n`Fetch Master Resume` exports your Google Doc resume as plain text, so you edit your resume in Docs and this workflow always picks up the latest version.\n\nSee `docs/SETUP.md`.",
+        "height": 460,
+        "width": 660,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-2-28",
+      "name": "Part 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 2 - Scrape LinkedIn\n\nOne Apify actor run per saved search, via `run-sync-get-dataset-items`.\n\nAny keys you add to a search in Config are forwarded to the actor untouched, so swapping actors is a config change.\n\nCredential: **Header Auth**, `Authorization` = `Bearer <APIFY_TOKEN>`.\n\nSet to continue on error - one dead search will not kill the run.",
+        "height": 460,
+        "width": 420,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-3-29",
+      "name": "Part 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        420,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 3 - Normalise and de-duplicate\n\n`Normalize Jobs` flattens whatever shape the actor returned into one consistent job object.\n\n`Get Logged Jobs` + `Filter New Jobs` anti-join against the sheet so a job is never scored twice, and cap the batch at `maxJobsPerRun` so a 700-result scrape cannot blow your OpenAI budget.\n\n`Loop Over Jobs` runs one job at a time from here on.",
+        "height": 460,
+        "width": 640,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-4-30",
+      "name": "Part 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        860
+      ],
+      "parameters": {
+        "content": "## Part 4 - AI relevance scoring\n\nGPT-4o at temperature 0.1 with a structured output schema, so the score is a number you can filter on rather than prose.\n\nThe prompt hard-caps scores on deal-breakers, seniority gaps, location conflicts, and salary - tune it in `src/prompts/relevance-system.md`.",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-5-31",
+      "name": "Part 5",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1720,
+        860
+      ],
+      "parameters": {
+        "content": "## Part 5 - Filter\n\nKeeps jobs scoring at or above `relevanceThreshold` with no deal-breaker hit. Everything else is logged to the **Skipped** tab, which is how you find out your threshold or your search queries need tuning.",
+        "height": 200,
+        "width": 420,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-6-32",
+      "name": "Part 6",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1980,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 6 - Write the resume\n\nA brand-new resume per job, in HTML, from your master resume only.\n\nThe system prompt forbids inventing anything and restricts the HTML to tags and CSS that survive conversion into a Google Doc.",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-7-33",
+      "name": "Part 7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2420,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 7 - Create the Google Doc\n\nDrive only converts an upload into a native Google Doc when the metadata declares `application/vnd.google-apps.document`, which needs a `multipart/related` body - so `Build Drive Upload` assembles it and the HTTP node sends it raw.\n\nResult: a real, editable Doc per application.",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      }
+    },
+    {
+      "id": "part-8-34",
+      "name": "Part 8",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2860,
+        60
+      ],
+      "parameters": {
+        "content": "## Part 8 - Log it\n\nAppends one row per application to the **Applications** tab, including the score, the reasoning, the resume Doc link, and the posting URL.\n\nThat sheet is also the dedupe source for Part 3.\n\nEnable `Email Run Summary` for a digest at the end of each run.",
+        "height": 420,
+        "width": 420,
+        "color": 4
+      }
+    }
+  ],
+  "connections": {
+    "Run Every Weekday Morning": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Manually": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Fetch Master Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Master Resume": {
+      "main": [
+        [
+          {
+            "node": "Expand Searches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Searches": {
+      "main": [
+        [
+          {
+            "node": "Scrape LinkedIn Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape LinkedIn Jobs": {
+      "main": [
+        [
+          {
+            "node": "Normalize Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Jobs": {
+      "main": [
+        [
+          {
+            "node": "Get Logged Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Logged Jobs": {
+      "main": [
+        [
+          {
+            "node": "Filter New Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter New Jobs": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Jobs": {
+      "main": [
+        [
+          {
+            "node": "Build Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Score Job Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scoring Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Score Job Relevance",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relevance Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Score Job Relevance",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Job Relevance": {
+      "main": [
+        [
+          {
+            "node": "Merge Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Score": {
+      "main": [
+        [
+          {
+            "node": "Worth Applying?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worth Applying?": {
+      "main": [
+        [
+          {
+            "node": "Write Tailored Resume",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Skipped Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Write Tailored Resume",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Tailored Resume": {
+      "main": [
+        [
+          {
+            "node": "Clean Resume HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Resume HTML": {
+      "main": [
+        [
+          {
+            "node": "Build Drive Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Drive Upload": {
+      "main": [
+        [
+          {
+            "node": "Create Google Doc",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Google Doc": {
+      "main": [
+        [
+          {
+            "node": "Build Log Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Log Row": {
+      "main": [
+        [
+          {
+            "node": "Log Application",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Application": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Skipped Row": {
+      "main": [
+        [
+          {
+            "node": "Log Skipped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Skipped": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Run Summary": {
+      "main": [
+        [
+          {
+            "node": "Email Run Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {},
+  "tags": []
+}

@@ -1,0 +1,9 @@
+{
+  "relevant": true,
+  "score": 82,
+  "verdict": "strong match",
+  "matchReasons": "Six years of Python and three years owning ETL pipelines map directly to the data platform ownership described in the posting.",
+  "gaps": "No stated Kubernetes experience, which the posting lists as required.",
+  "dealBreakerHit": false,
+  "suggestedResumeAngle": "Lead with data platform ownership and the pipeline cost reduction metrics."
+}
