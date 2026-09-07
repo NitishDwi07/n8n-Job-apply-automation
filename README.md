@@ -115,6 +115,9 @@ titleKeywords       = ['backend', 'platform', 'data engineer']
 excludeKeywords     = ['intern', 'sales', 'director']
 ```
 
+On this path `searchQueries` is unused — it is the Apify path's input. These
+four fields are what find and filter your jobs.
+
 Twenty companies you actually want beats a thousand aggregator postings. Slug
 lookup table is in [docs/SETUP.md](docs/SETUP.md#finding-company-board-slugs).
 

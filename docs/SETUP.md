@@ -133,10 +133,19 @@ Open the **Config** node. Everything you ever need to change is here.
 | `dealBreakers` | Non-negotiables that cap a score at 20 — be specific and honest here, this is the single highest-leverage field |
 | `minSalary` | Your floor, as free text |
 | `notifyEmail` | Where the run summary goes |
-| `searchQueries` | One object per saved search |
+| `searchQueries` | **Apify path only.** Leave the default when `jobSource` is `free`. |
 
-`searchQueries` is a plain array of objects, and **every key is forwarded to the
-Apify actor untouched**:
+> **Which fields actually find your jobs?** It depends on `jobSource`:
+> - **`free` (default)** — `greenhouseCompanies` / `leverCompanies` /
+>   `ashbyCompanies` / `useAggregators` choose the sources, and
+>   `titleKeywords` / `excludeKeywords` do the filtering. `searchQueries` is
+>   **not used** — but leave at least one entry in it, because `Expand
+>   Searches` fails on an empty list.
+> - **`apify`** — `searchQueries` is the search, and `titleKeywords` still
+>   filters what comes back.
+
+`searchQueries` is a plain array of objects, and on the Apify path **every key
+is forwarded to the actor untouched**:
 
 ```js
 [
@@ -179,7 +188,8 @@ Read the `Skipped` tab after a few runs. That tab is the feedback loop:
 
 - Good jobs being skipped → lower `relevanceThreshold`, or soften `dealBreakers`.
 - Junk clearing the bar → raise the threshold, or sharpen `mustHaves`.
-- The same irrelevant company every run → tighten `searchQueries`.
+- The same irrelevant company every run → drop it from the company lists, or
+  add a word to `excludeKeywords`. (On the Apify path, tighten `searchQueries`.)
 - Resumes reading generically → edit `src/prompts/resume-system.md`, run
   `npm run build`, re-import.
 - Hitting a Gemini rate limit → raise `throttleSeconds` or lower
