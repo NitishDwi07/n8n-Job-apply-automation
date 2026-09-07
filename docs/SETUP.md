@@ -23,6 +23,35 @@ You should see eight labelled sections on the canvas matching the eight parts of
 
 ---
 
+## Shortcut: let the script create steps 3-5
+
+Steps 3, 4 and 5 are mechanical, and step 4 has the one failure mode that is
+easy to get wrong by hand (header names must match exactly). If you already
+have a Google credential, one command does all three and writes the resulting
+IDs into the Config node:
+
+```bash
+npm run setup -- --dry-run    # show exactly what it would do, no credentials needed
+
+# then, with either kind of credential:
+GOOGLE_ACCESS_TOKEN=ya29....  npm run setup
+GOOGLE_SERVICE_ACCOUNT_JSON=./sa.json SHARE_WITH_EMAIL=you@example.com npm run setup
+```
+
+It creates the Drive folder, the spreadsheet with both tabs and correct bold
+frozen headers, and a master resume Doc seeded from the example - then patches
+`googleSheetId`, `masterResumeDocId` and `driveFolderId` into the workflow JSON.
+
+It cannot create the credentials themselves; that is step 6, and it needs your
+Google login. If you would rather click through it, steps 3-5 below do the same
+thing by hand.
+
+> Untested against a live Google account - it was written and verified in
+> `--dry-run` only. Run the dry run first, and if a call fails it prints the
+> status and body rather than half-finishing.
+
+---
+
 ## 3. Master resume (Google Docs)
 
 1. Create a Google Doc with your full, unabridged resume — every role, every

@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
+import { APPLICATIONS_HEADERS, SKIPPED_HEADERS } from './sheet-schema.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -301,10 +302,15 @@ test('build-log-row matches the Applications header and derives a doc link', () 
   assert.equal(row['Resume Doc'], 'https://docs.google.com/document/d/doc-9/edit');
   assert.equal(row.Status, 'Resume ready');
   assert.equal(row.Score, 88);
-  assert.deepEqual(Object.keys(row), [
-    'Date', 'Job ID', 'Title', 'Company', 'Location', 'Workplace', 'Salary',
-    'Score', 'Verdict', 'Match Reasons', 'Gaps', 'Resume Doc', 'Job URL', 'Apply URL', 'Status',
-  ]);
+  // The sheet the setup script creates and the row this node writes must agree
+  // exactly - the Sheets node auto-maps by column name, so a mismatch silently
+  // creates a new column rather than failing.
+  assert.deepEqual(Object.keys(row), APPLICATIONS_HEADERS);
+});
+
+test('build-skipped-row matches the Skipped header row exactly', () => {
+  const out = run('build-skipped-row.js', [], {}, { jobId: '1', title: 'T', company: 'C', location: 'L', score: 15, verdict: 'no', gaps: 'g', url: 'u' });
+  assert.deepEqual(Object.keys(out[0].json), SKIPPED_HEADERS);
 });
 
 test('build-log-row prefers the webViewLink Drive returns', () => {

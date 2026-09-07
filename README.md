@@ -66,8 +66,16 @@ docker compose up -d      # http://localhost:5678
 
 Then in n8n: **Import from File** → `workflows/job-application-automation.json`.
 
-Full walkthrough — Google Cloud OAuth, the Apify token, the sheet headers, and
-the test run — is in **[docs/SETUP.md](docs/SETUP.md)**.
+Then create your credentials (Google OAuth + a free Gemini key), and let the
+setup script build the Google side for you:
+
+```bash
+npm run setup -- --dry-run   # see what it would create
+npm run setup                # creates folder + sheet + resume doc, writes the IDs into Config
+```
+
+Full walkthrough — Google Cloud OAuth, the sheet headers, and the test run — is
+in **[docs/SETUP.md](docs/SETUP.md)**.
 
 You will need:
 
@@ -134,7 +142,7 @@ tune these before anything else.
 | `src/code/*.js` | Code node sources, as real reviewable JavaScript |
 | `src/prompts/*.md` | The two AI prompts — edit these to change behaviour |
 | `src/schemas/` | The screener's structured output shape |
-| `build/` | Assembles the workflow JSON; validates it; tests the Code nodes |
+| `build/` | Assembles the workflow JSON; validates it; tests the Code nodes; `setup.mjs` creates the Google resources |
 | `docs/` | Setup, sheet schema, architecture, costs |
 | `assets/master-resume.example.md` | What a good master resume looks like |
 
